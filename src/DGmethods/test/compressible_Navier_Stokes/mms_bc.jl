@@ -374,7 +374,7 @@ let
             Ne = (2^(l-1) * base_num_elem, 2^(l-1) * base_num_elem)
             brickrange = (range(DFloat(0); length=Ne[1]+1, stop=1),
                           range(DFloat(0); length=Ne[2]+1, stop=1),
-            range(DFloat(0); length=Ne[2]+1, stop=1))
+                          range(DFloat(0); length=Ne[2]+1, stop=1))
             topl = BrickTopology(mpicomm, brickrange,
                                  periodicity = (false, false, false))
             dt = 5e-3 / Ne[1]
