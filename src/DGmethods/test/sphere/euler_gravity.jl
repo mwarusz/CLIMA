@@ -26,6 +26,7 @@ const stateid = (ρid = _ρ, Uid = _U, Vid = _V, Wid = _W, Eid = _E)
 const statenames = ("ρ", "U", "V", "W", "E")
 
 using CLIMA.PlanetParameters: grav
+const G = grav
 
 if !@isdefined integration_testing
   const integration_testing =
@@ -33,21 +34,21 @@ if !@isdefined integration_testing
   using Random
 end
 
-using CLIMA.PlanetParameters: Omega, grav, planet_radius
-
 include("mms_solution_generated.jl")
 
 # preflux computation
-@inline function preflux(Q, _...)
+preflux(Q, _, aux, _...) = preflux(Q, aux)
+@inline function preflux(Q, aux)
   γ::eltype(Q) = γ_exact
   @inbounds ρ, U, V, W, E = Q[_ρ], Q[_U], Q[_V], Q[_W], Q[_E]
+  @inbounds ϕ = aux[_a_ϕ]
   ρinv = 1 / ρ
   u, v, w = ρinv * U, ρinv * V, ρinv * W
-  ((γ-1)*(E - ρinv * (U^2 + V^2 + W^2) / 2), u, v, w, ρinv)
+  ((γ-1)*(E - ρinv * (U^2 + V^2 + W^2) / 2 - ρ * ϕ), u, v, w, ρinv)
 end
 
 eulerflux!(F, Q, QV, aux, t) =
-eulerflux!(F, Q, QV, aux, t, preflux(Q)...)
+eulerflux!(F, Q, QV, aux, t, preflux(Q, aux)...)
 
 @inline function eulerflux!(F, Q, QV, aux, t, P, u, v, w, ρinv)
   @inbounds begin
@@ -83,8 +84,8 @@ end
 
 @inline function source!(S, Q, aux, t)
   @inbounds begin
-    # ϕx, ϕy, ϕz = aux[_ϕx], aux[_ϕy], aux[_ϕz]
-    # ρ = Q[_ρ]
+    ϕx, ϕy, ϕz = aux[_a_ϕx], aux[_a_ϕy], aux[_a_ϕz]
+    ρ = Q[_ρ]
     # S[_ρ] = 0
     # S[_U] = 0 #-ρ * ϕx
     # S[_V] = 0 #-ρ * ϕy
@@ -95,9 +96,9 @@ end
     cπt = cos(π * t)
     sπt = sin(π * t)
     S[_ρ] = Sρ_g(t, x, y, z, r, cπt, sπt)
-    S[_U] = SU_g(t, x, y, z, r, cπt, sπt)
-    S[_V] = SV_g(t, x, y, z, r, cπt, sπt)
-    S[_W] = SW_g(t, x, y, z, r, cπt, sπt)
+    S[_U] = SU_g(t, x, y, z, r, cπt, sπt) - ρ * ϕx
+    S[_V] = SV_g(t, x, y, z, r, cπt, sπt) - ρ * ϕy
+    S[_W] = SW_g(t, x, y, z, r, cπt, sπt) - ρ * ϕz
     S[_E] = SE_g(t, x, y, z, r, cπt, sπt)
   end
 end
@@ -265,7 +266,7 @@ let
         Nvert = 2^(l-1) * base_Nvert
         Rrange = range(DFloat(Rinner); length=Nvert+1, stop=Router)
         topl = StackedCubedSphereTopology(mpicomm, Nhorz, Rrange)
-        dt = 5e-4 / Nhorz
+        dt = 1e-3 / Nhorz
         warpfun = Topologies.cubedshellwarp
         timeend = integration_testing ? 0.01 : 2dt
         nsteps = ceil(Int64, timeend / dt)
