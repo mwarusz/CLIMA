@@ -45,10 +45,13 @@ const γ_exact = 7 // 5
 const μ_exact = 10
 const xmin = 0
 const ymin = 0
+const zmin = 0
 const xmax = 1500
 const ymax = 1500
+const zmax =  150
 const xc   = xmax / 2
 const yc   = ymax / 2
+const zc   = zmax / 2
 
 # -------------------------------------------------------------------------
 # Preflux calculation: This function computes parameters required for the 
@@ -101,11 +104,11 @@ cns_flux!(F, Q, VF, aux, t) = cns_flux!(F, Q, VF, aux, t, preflux(Q,VF, aux)...)
   @inbounds begin
     ρ, U, V, W, E, QT = Q[_ρ], Q[_U], Q[_V], Q[_W], Q[_E], Q[_QT]
     # Inviscid contributions 
-    F[1, _ρ], F[2, _ρ], F[3, _ρ] = U          , V          , W
-    F[1, _U], F[2, _U], F[3, _U] = u * U  + P , v * U      , w * U
-    F[1, _V], F[2, _V], F[3, _V] = u * V      , v * V + P  , w * V
-    F[1, _W], F[2, _W], F[3, _W] = u * W      , v * W      , w * W + P
-    F[1, _E], F[2, _E], F[3, _E] = u * (E + P), v * (E + P), w * (E + P)
+    F[1, _ρ], F[2, _ρ], F[3, _ρ]    = U          , V          , W
+    F[1, _U], F[2, _U], F[3, _U]    = u * U  + P , v * U      , w * U
+    F[1, _V], F[2, _V], F[3, _V]    = u * V      , v * V + P  , w * V
+    F[1, _W], F[2, _W], F[3, _W]    = u * W      , v * W      , w * W + P
+    F[1, _E], F[2, _E], F[3, _E]    = u * (E + P), v * (E + P), w * (E + P)
     F[1, _QT], F[2, _QT], F[3, _QT] = u * QT  , v * QT     , w * QT 
     # Stress tensor
     τ11, τ22, τ33 = VF[_τ11], VF[_τ22], VF[_τ33]
@@ -249,7 +252,7 @@ end
 
   # Typically these sources are imported from modules
   @inbounds begin
-  source_squircle_sponge!(S,Q,aux,t)
+  #source_squircle_sponge!(S,Q,aux,t)
   source_geopot!(S, Q, aux, t)
   #source_radiation!(S,Q,aux,t)
   #source_ls_subsidence!(S,Q,aux,t)
@@ -328,7 +331,7 @@ function rising_thermal_bubble!(dim, Q, t, x, y, z, _...)
   q_liq::DFloat         = 0
   q_ice::DFloat         = 0 
   # perturbation parameters for rising bubble
-  r                     = sqrt((x-xc)^2 + (y-yc)^2)
+  r                     = sqrt((x - xc)^2 + (y - yc)^2)
   rc::DFloat            = 300
   θ_ref::DFloat         = 300
   θ_c::DFloat           = 5.0
@@ -357,8 +360,8 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
   # CuArray option (TODO merge new master)
 
   brickrange = (range(DFloat(xmin), length=Ne[1]+1, DFloat(xmax)),
-                range(DFloat(xmin), length=Ne[2]+1, DFloat(xmax)),
-                range(DFloat(xmin), length=Ne[3]+1, DFloat(xmax)))
+                range(DFloat(ymin), length=Ne[2]+1, DFloat(ymax)),
+                range(DFloat(zmin), length=Ne[3]+1, DFloat(zmax)))
   
   # User defined periodicity in the topl assignment
   # brickrange defines the domain extents
@@ -476,7 +479,7 @@ let
     # User defined timestep estimate
     # User defined simulation end time
     # User defined polynomial order 
-    numelem = (5,5,5)
+    numelem = (5,5,1)
     dt = 1e-2
     timeend = 10
     polynomialorder = 5
