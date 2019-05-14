@@ -14,6 +14,7 @@ end
 using ..ODESolvers
 ODEs = ODESolvers
 using ..SpaceMethods
+using ..MPIStateArrays
 
 """
     LowStorageRungeKutta(f, Q; dt, t0 = 0)
@@ -100,8 +101,17 @@ Change the time step size to `dt` for `lsrk.
 """
 updatedt!(lsrk::LowStorageRungeKutta, dt) = lsrk.dt[1] = dt
 
-function ODEs.dostep!(Q, lsrk::LowStorageRungeKutta, timeend,
-                      adjustfinalstep)
+ODEs.dostep!(Q::MPIStateArray, lsrk::LowStorageRungeKutta, timeend,
+             adjustfinalstep) = local_dostep!(Q.Q, lsrk.dQ.Q, lsrk, timeend,
+                                              adjustfinalstep, Q.realelems)
+
+ODEs.dostep!(Q::Array, lsrk::LowStorageRungeKutta, timeend,
+             adjustfinalstep) = local_dostep!(Q, lsrk.dQ, lsrk, timeend,
+                                              adjustfinalstep)
+
+function local_dostep!(Q, dQ, lsrk, timeend, adjustfinalstep,
+                       realelems=1:size(Q,3))
+  @assert length(size(Q)) <= 3
   time, dt = lsrk.t[1], lsrk.dt[1]
   if adjustfinalstep && time + dt > timeend
     dt = timeend - time
@@ -114,7 +124,7 @@ function ODEs.dostep!(Q, lsrk::LowStorageRungeKutta, timeend,
 
     # update solution and scale RHS
     # FIXME: GPUify
-    update!(Val(size(Q,2)), Val(size(Q,1)), dQ.Q, Q.Q, Q.realelems,
+    update!(Val(size(Q,2)), Val(size(Q,1)), dQ, Q, realelems,
             RKA[s%length(RKA)+1], RKB[s], dt)
 
     time += RKC[s] * dt
@@ -128,12 +138,11 @@ function ODEs.dostep!(Q, lsrk::LowStorageRungeKutta, timeend,
 end
 
 # {{{ Update solution (for all dimensions)
-function update!(::Val{nstates}, ::Val{Np}, rhs::Array{T, 3}, Q, elems, rka,
+function update!(::Val{nstates}, ::Val{Np}, rhs::Array{T}, Q, elems, rka,
                  rkb, dt) where {nstates, Np, T}
   @inbounds for e = elems, s = 1:nstates, i = 1:Np
     Q[i, s, e] += rkb * dt * rhs[i, s, e]
     rhs[i, s, e] *= rka
-    
   end
 end
 # }}}
