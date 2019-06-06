@@ -1,7 +1,8 @@
 module AdditiveRungeKuttaMethod
 export AdditiveRungeKutta, updatedt!
 
-using GPUifyLoops
+using GPUifyLoops, CUDAdrv
+include("AdditiveRungeKuttaMethod_kernels.jl")
 
 using StaticArrays
 
@@ -142,25 +143,31 @@ function ODEs.dostep!(Q, ark::AdditiveRungeKutta, timeend,
     rhs!(Rstages[is-1], Qstages[is-1], time + RKC[is-1] * dt, increment = false)
 
     #construct QE
-    rv_QE .= rv_Q
-    for js = 1:is-1
-      rv_QE .+= dt * RKA_explicit[is, js] * rv_Rstages[js]
-    end
+    #rv_QE .= rv_Q
+    #for js = 1:is-1
+    #  rv_QE .+= dt * RKA_explicit[is, js] * rv_Rstages[js]
+    #end
     
     #construct Qhat
-    rv_Qhat .= rv_QE
-    for js = 1:is-1
-      rv_Qhat .+= (RKA_implicit[is, js] - RKA_explicit[is, js]) / RKA_implicit[is, is] * rv_Qstages[js]
+    rv_Qhat .= rv_Q
+    rv_Qstages[is] .= 0
+    CUDAdrv.@profile for js = 1:is-1
+      rv_Qhat .+= ((RKA_implicit[is, js] - RKA_explicit[is, js]) / RKA_implicit[is, is] * rv_Qstages[js]
+                   .+ dt * RKA_explicit[is, js] * rv_Rstages[js])
+      rv_Qstages[is] .-= (RKA_implicit[is, js] - RKA_explicit[is, js]) / RKA_implicit[is, is] * rv_Qstages[js]
     end
+
+    #threads = 1024
+    #blocks = div(length(rv_Q) + threads - 1, threads)
+
+    #@launch(device(Q), threads = threads, blocks = blocks,
+    #        update!(rv_Q, rv_Qstages, rv_Rstages, rv_Qhat, RKA_explicit, RKA_implicit, dt, is))
 
     #solves Q_tt = Qhat + dt * RKA_implicit[is, is] * rhs_linear!(Q_tt)
     ark.solve_linear_problem!(Qtt, Qhat, rhs_linear!, dt * RKA_implicit[is, is])
     
     #update Qstages
-    rv_Qstages[is] .= rv_Qtt
-    for js = 1:is-1
-      rv_Qstages[is] .-= (RKA_implicit[is, js] - RKA_explicit[is, js]) / RKA_implicit[is, is] * rv_Qstages[js]
-    end
+    rv_Qstages[is] .+= rv_Qtt
   end
  
   # compute the rhs for the final stage
