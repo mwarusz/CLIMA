@@ -171,9 +171,11 @@ avoided.
 
 The numerical flux function is called with data from two DOFs as
 ```
-numerical_flux!(F, nM, QM, VM, auxM, QP, VP, auxP, t)
+numerical_flux!(FM, FP, F, nM, QM, VM, auxM, QP, VP, auxP, t)
 ```
 where
+- `FM` and `FP` are `MMatrix`s of size `(3, length_state_vector)` which are
+  temporary storage for the flux routines
 - `F` is an `MVector` of length `length_state_vector` to be filled with the
   numerical flux across the face (note that this is uninitialized so user must
   set to zero if is this desired)
@@ -190,9 +192,11 @@ If `grid.topology` has a boundary then the function
 `numerical_boundary_flux!` must be specified. This function is called
 with the data from the neighbouring DOF as
 ```
-numerical_boundary_flux!(F, nM, QM, VM, auxM, QP, VP, auxP, bctype, t)
+numerical_boundary_flux!(FM, FP, F, nM, QM, VM, auxM, QP, VP, auxP, bctype, t)
 ```
 where
+- `FM` and `FP` are `MMatrix`s of size `(3, length_state_vector)` which are
+  temporary storage for the flux routines
 - `F` is an `MArray` of size `(dim, length_state_vector)` to be filled with the
   numerical flux across the face (note that this is uninitialized so user must
   set to zero is this desired)

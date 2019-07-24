@@ -1,13 +1,12 @@
-module NumericalFluxes
-using StaticArrays
+module NumericalFluxes using StaticArrays
 
-"""
-    rusanov!(F::MArray, nM, QM, QVM, auxM, QP, QVP, auxP, t, flux!, wavespeed,
-             [preflux = (_...) -> (), computeQjump!])
+""" rusanov!(FM::MArray, FP::MArray, F::MArray, nM, QM, QVM, auxM, QP, QVP,
+auxP, t, flux!, wavespeed, [preflux = (_...) -> (), computeQjump!])
 
 Calculate the Rusanov (aka local Lax-Friedrichs) numerical flux given the plus
-and minus side states/viscous states `QP`/`QVP` and `QM`/`QVM` using the physical
-flux function `flux!` and `wavespeed` calculation.
+and minus side states/viscous states `QP`/`QVP` and `QM`/`QVM` using the
+physical flux function `flux!` and `wavespeed` calculation. `FM` and `FP` are
+temporary storage which can be used for the computation of the flux.
 
 The `flux!` has almost the same calling convention as `flux!` from
 [`DGBalanceLaw`](@ref) except that `preflux(Q, aux, t)` is splatted at the end
@@ -29,7 +28,10 @@ correcting `Q` to include discontinuous reference states.
     `rusanov_boundary_flux!`
 
 """
-function rusanov!(F::MArray{Tuple{nstate}}, nM,
+function rusanov!(FM::MArray{Tuple{3, nstate}},
+                  FP::MArray{Tuple{3, nstate}},
+                  F::MArray{Tuple{nstate}},
+                  nM,
                   QM, QVM, auxM,
                   QP, QVP, auxP,
                   t, flux!, wavespeed,
@@ -39,11 +41,9 @@ function rusanov!(F::MArray{Tuple{nstate}}, nM,
                   PP = preflux(QP, QVP, auxP, t)
                  ) where {nstate}
   λM = wavespeed(nM, QM, auxM, t, PM...)
-  FM = similar(F, Size(3, nstate))
   flux!(FM, QM, QVM, auxM, t, PM...)
 
   λP = wavespeed(nM, QP, auxP, t, PP...)
-  FP = similar(F, Size(3, nstate))
   flux!(FP, QP, QVP, auxP, t, PP...)
 
   λ  =  max(λM, λP)
@@ -64,10 +64,10 @@ function rusanov!(F::MArray{Tuple{nstate}}, nM,
 end
 
 """
-    rusanov_boundary_flux!(F::MArray{Tuple{nstate}}, nM, QM, QVM, auxM, QP, QVP,
-                           auxP, bctype, t, flux!, bcstate!, wavespeed,
-                           preflux = (_...) -> (), computeQjump! = nothing
-                           ) where {nstate}
+    rusanov_boundary_flux!(FM::MArray, FP::MArray, F::MArray{Tuple{nstate}}, nM,
+                           QM, QVM, auxM, QP, QVP, auxP, bctype, t, flux!,
+                           bcstate!, wavespeed, preflux = (_...) -> (),
+                           computeQjump! = nothing) where {nstate}
 
 The function `bcstate!` is used to calculate the plus side state for the
 boundary condition `bctype`. The calling convention is:
@@ -79,7 +79,9 @@ where `QP`, `QVP`, and `auxP` are the plus side state, viscous state, and
 auxiliary state to be filled from the given data; other arguments should not be
 modified.
 """
-function rusanov_boundary_flux!(F::MArray{Tuple{nstate}}, nM,
+function rusanov_boundary_flux!(FM::MArray{Tuple{3, nstate}},
+                                FP::MArray{Tuple{3, nstate}},
+                                F::MArray{Tuple{nstate}}, nM,
                                 QM, QVM, auxM,
                                 QP, QVP, auxP,
                                 bctype, t,
@@ -91,7 +93,7 @@ function rusanov_boundary_flux!(F::MArray{Tuple{nstate}}, nM,
   PM = preflux(QM, QVM, auxM, t)
   bcstate!(QP, QVP, auxP, nM, QM, QVM, auxM, bctype, t, PM...)
   PP = preflux(QP, QVP, auxP, t)
-  rusanov!(F, nM, QM, QVM, auxM, QP, QVP, auxP, t, flux!, wavespeed, preflux,
+  rusanov!(FM, FP, F, nM, QM, QVM, auxM, QP, QVP, auxP, t, flux!, wavespeed, preflux,
            computeQjump!, PM, PP)
 end
 

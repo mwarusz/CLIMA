@@ -260,6 +260,8 @@ function facerhs!(::Val{dim}, ::Val{N}, ::Val{nstate}, ::Val{nviscstate},
   l_auxP = MArray{Tuple{nauxstate}, DFloat}(undef)
 
   l_F = MArray{Tuple{nstate}, DFloat}(undef)
+  l_FM = MArray{Tuple{3, nstate}, DFloat}(undef)
+  l_FP = MArray{Tuple{3, nstate}, DFloat}(undef)
 
   @inbounds @loop for e in (elems; blockIdx().x)
     for f = 1:nface
@@ -300,10 +302,10 @@ function facerhs!(::Val{dim}, ::Val{N}, ::Val{nstate}, ::Val{nviscstate},
         bctype =
             numerical_boundary_flux! === nothing ? 0 : elemtobndy[f, e]
         if bctype == 0
-          numerical_flux!(l_F, nM, l_QM, l_QviscM, l_auxM, l_QP, l_QviscP,
+          numerical_flux!(l_FM, l_FP, l_F, nM, l_QM, l_QviscM, l_auxM, l_QP, l_QviscP,
                           l_auxP, t)
         else
-          numerical_boundary_flux!(l_F, nM, l_QM, l_QviscM, l_auxM, l_QP,
+          numerical_boundary_flux!(l_FM, l_FP, l_F, nM, l_QM, l_QviscM, l_auxM, l_QP,
                                    l_QviscP, l_auxP, bctype, t)
         end
 
