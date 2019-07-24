@@ -17,7 +17,7 @@ using CLIMA.GeneralizedConjugateResidualSolver
 using CLIMA.GeneralizedMinimalResidualSolver
 using CLIMA.AdditiveRungeKuttaMethod
 
-const IMEX = true
+const IMEX = false
 const γ_exact = 7 // 5 # FIXME: Remove this for some moist thermo approach
 
 using CLIMA.MoistThermodynamics
@@ -153,7 +153,7 @@ end
 
 @inline function source!(S, Q, aux, t)
   # Initialise the final block source term
-  S .= 0
+  S .= -zero(eltype(Q))
 
   source_geopotential!(S, Q, aux, t)
 end
