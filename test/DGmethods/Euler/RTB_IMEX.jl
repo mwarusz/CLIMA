@@ -14,8 +14,10 @@ using Logging, Printf, Dates
 using CLIMA.Vtk
 using CLIMA.LinearSolvers
 using CLIMA.GeneralizedConjugateResidualSolver
+using CLIMA.GeneralizedMinimalResidualSolver
 using CLIMA.AdditiveRungeKuttaMethod
 
+const IMEX = true
 const γ_exact = 7 // 5 # FIXME: Remove this for some moist thermo approach
 
 using CLIMA.MoistThermodynamics
@@ -36,15 +38,15 @@ const _δρ, _ρu, _ρv, _ρw, _δρe = 1:_nstate
 const _ρu⃗ = SVector(_ρu, _ρv, _ρw)
 const statenames = ("δρ", "ρu", "ρv", "ρw", "δρe")
 
-const numdims = 2
-const Δx    = 20
-const Δy    = 20
-const Δz    = 20
+const numdims = 3
+const Δx    = 25
+const Δy    = 25
+const Δz    = 25
 const Npoly = 4
 
 # Physical domain extents
 const (xmin, xmax) = (0, 1000)
-const (ymin, ymax) = (0, 1500)
+const (ymin, ymax) = (0, 1000)
 const (zmin, zmax) = (0, 1000)
 
 const domain_start = (xmin, ymin, zmin)
@@ -77,7 +79,7 @@ function auxiliary_state_initialization!(aux, x, y, z) #JK, dx, dy, dz)
   end
 end
 
-function pressure(Q, aux)
+@inline function pressure(Q, aux)
   @inbounds begin
     gravity::eltype(Q) = grav
     γ::eltype(Q) = γ_exact # FIXME: Remove this for some moist thermo approach
@@ -91,7 +93,7 @@ function pressure(Q, aux)
   end
 end
 
-function wavespeed(n, Q, aux, t)
+@inline function wavespeed(n, Q, aux, t)
   γ::eltype(Q) = γ_exact # FIXME: Remove this for some moist thermo approach
   n⃗ = SVector(n)
   @inbounds begin
@@ -107,7 +109,7 @@ function wavespeed(n, Q, aux, t)
   end
 end
 
-function euler_flux!(F, Q, _, aux, t)
+@inline function euler_flux!(F, Q, _, aux, t)
   P = pressure(Q, aux)
   @inbounds begin
     δρ, δρe = Q[_δρ], Q[_δρe]
@@ -124,7 +126,7 @@ function euler_flux!(F, Q, _, aux, t)
   end
 end
 
-function bcstate!(QP, QVP, auxP, nM, QM, QMP, auxM, bctype, t)
+@inline function bcstate!(QP, QVP, auxP, nM, QM, QMP, auxM, bctype, t)
   if bctype == 1
     nofluxbc!(QP, QVP, auxP, nM, QM, QMP, auxM, bctype, t)
   else
@@ -132,7 +134,7 @@ function bcstate!(QP, QVP, auxP, nM, QM, QMP, auxM, bctype, t)
   end
 end
 
-function nofluxbc!(QP, QVP, auxP, nM, QM, QMP, auxM, bctype, t)
+@inline function nofluxbc!(QP, QVP, auxP, nM, QM, QMP, auxM, bctype, t)
   @inbounds begin
     ρu⃗M = SVector(QM[_ρu], QM[_ρv], QM[_ρw])
     n⃗M = SVector(nM)
@@ -149,14 +151,14 @@ function nofluxbc!(QP, QVP, auxP, nM, QM, QMP, auxM, bctype, t)
   end
 end
 
-function source!(S, Q, aux, t)
+@inline function source!(S, Q, aux, t)
   # Initialise the final block source term
   S .= 0
 
   source_geopotential!(S, Q, aux, t)
 end
 
-function source_geopotential!(S, Q, aux, t)
+@inline function source_geopotential!(S, Q, aux, t)
   @inbounds begin
     δρ = Q[_δρ]
     ρ0 = aux[_a_ρ0]
@@ -236,7 +238,7 @@ function rising_bubble!(dim, Q, t, x, y, z, aux)
 end
 
 # {{{ Linearization
-function lin_eulerflux!(F, Q, _, aux, t)
+@inline function lin_eulerflux!(F, Q, _, aux, t)
   F .= 0
   @inbounds begin
     DFloat = eltype(Q)
@@ -262,8 +264,9 @@ function lin_eulerflux!(F, Q, _, aux, t)
   end
 end
 
-function wavespeed_linear(n, Q, aux, t)
+@inline function wavespeed_linear(n, Q, aux, t)
   DFloat = eltype(Q)
+  @inbounds begin
   γ::DFloat = γ_exact # FIXME: Remove this for some moist thermo approach
 
   ρ0, ρe0, ϕ = aux[_a_ρ0], aux[_a_ρe0], aux[_a_ϕ]
@@ -271,13 +274,14 @@ function wavespeed_linear(n, Q, aux, t)
   P0 = (γ-1)*(ρe0 - ρ0 * ϕ)
 
   sqrt(ρinv0 * γ * P0)
+  end
 end
 
-function lin_source!(S, Q, aux, t)
+@inline function lin_source!(S, Q, aux, t)
   S .= 0
   lin_source_geopotential!(S, Q, aux, t)
 end
-function lin_source_geopotential!(S, Q, aux, t)
+@inline function lin_source_geopotential!(S, Q, aux, t)
   @inbounds begin
     δρ = Q[_δρ]
     ∇ϕ = SVector(aux[_a_ϕ_x], aux[_a_ϕ_y], aux[_a_ϕ_z])
@@ -287,7 +291,7 @@ function lin_source_geopotential!(S, Q, aux, t)
   end
 end
 
-function lin_bcstate!(QP, QVP, auxP, nM, QM, QMP, auxM, bctype, t)
+@inline function lin_bcstate!(QP, QVP, auxP, nM, QM, QMP, auxM, bctype, t)
   if bctype == 1
     # this is already a linear boundary condition
     nofluxbc!(QP, QVP, auxP, nM, QM, QMP, auxM, bctype, t)
@@ -299,7 +303,6 @@ end
 # }}}
 
 function run(mpicomm, dim, Ne, N, timeend, DFloat, dt, output_steps)
-
   brickrange = ntuple(d -> range(domain_start[d], length = Ne[d] + 1, stop = domain_end[d]), dim)
 
   # User defined periodicity in the topl assignment
@@ -311,6 +314,7 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt, output_steps)
                                           FloatType = DFloat,
                                           DeviceArray = ArrayType,
                                           polynomialorder = N)
+
 
   numflux!(x...) = NumericalFluxes.rusanov!(x..., euler_flux!, wavespeed)
   numbcflux!(x...) = NumericalFluxes.rusanov_boundary_flux!(x..., euler_flux!,
@@ -331,33 +335,30 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt, output_steps)
   initialcondition(Q, x...) = rising_bubble!(dim, Q, DFloat(0), x...)
   Q = MPIStateArray(spacedisc, initialcondition)
 
-  # {{{ Lineariztion Setup
-  lin_numflux!(x...) = NumericalFluxes.rusanov!(x..., lin_eulerflux!,
-                                                # (_...)->0) # central
-                                                wavespeed_linear)
-  lin_numbcflux!(x...) =
-  NumericalFluxes.rusanov_boundary_flux!(x..., lin_eulerflux!, lin_bcstate!,
-                                         # (_...)->0) # central
-                                         wavespeed_linear)
-  lin_spacedisc = DGBalanceLaw(grid = grid,
-                               length_state_vector = _nstate,
-                               flux! = lin_eulerflux!,
-                               numerical_flux! = lin_numflux!,
-                               numerical_boundary_flux! = lin_numbcflux!,
-                               auxiliary_state_length = _nauxstate,
-                               auxiliary_state_initialization! =
-                               auxiliary_state_initialization!,
-                               source! = lin_source!)
-
-
-  # NOTE: In order to get the same results on the CPU and GPU we force ourselves
-  # to take the same number of iterations by setting at really high tolerance
-  # specifying the number of restarts
-  linearsolver = GeneralizedConjugateResidual(3, Q, 1e-4)
-
-  timestepper = ARK548L2SA2KennedyCarpenter(spacedisc, lin_spacedisc,
-                                            linearsolver, Q; dt = dt, t0 = 0)
-  # }}}
+  if IMEX
+    lin_numflux!(x...) = NumericalFluxes.rusanov!(x..., lin_eulerflux!,
+  						# (_...)->0) # central
+  						wavespeed_linear)
+    lin_numbcflux!(x...) =
+    NumericalFluxes.rusanov_boundary_flux!(x..., lin_eulerflux!, lin_bcstate!,
+  					 # (_...)->0) # central
+  					 wavespeed_linear)
+    lin_spacedisc = DGBalanceLaw(grid = grid,
+  			       length_state_vector = _nstate,
+  			       flux! = lin_eulerflux!,
+  			       numerical_flux! = lin_numflux!,
+  			       numerical_boundary_flux! = lin_numbcflux!,
+  			       auxiliary_state_length = _nauxstate,
+  			       auxiliary_state_initialization! =
+  			       auxiliary_state_initialization!,
+  			       source! = lin_source!)
+  
+    linearsolver = GeneralizedMinimalResidual(200, Q, 1e-2)
+    timestepper = ARK2GiraldoKellyConstantinescu(spacedisc, lin_spacedisc,
+                                                 linearsolver, Q; dt = dt, t0 = 0)
+  else
+    timestepper = LSRK54CarpenterKennedy(spacedisc, Q; dt = dt, t0 = 0)
+  end
 
   eng0 = norm(Q)
   @info @sprintf """Starting
@@ -398,10 +399,11 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt, output_steps)
                       MPI.Comm_size(mpicomm))
     writepvtu(pvtuprefix, prefixes, statenames)
     step[1] += 1
+    flush(stderr)
     nothing
   end
 
-  solve!(Q, timestepper; timeend=timeend, callbacks=(cbinfo, cbvtk))
+  solve!(Q, timestepper; timeend=timeend)
 
   # Print some end of the simulation information
   engf = norm(Q)
@@ -423,12 +425,13 @@ let
     device!(MPI.Comm_rank(mpicomm) % length(devices()))
   end
 
-
   # Stable explicit time step
   dt = min(Δx, Δy, Δz) / soundspeed_air(300.0) / Npoly
-  dt *= 40
+  if IMEX
+    dt *= 20
+  end
 
-  output_time = 0.5
+  output_time = 10
   output_steps = ceil(output_time / dt)
 
   @info @sprintf """ ----------------------------------------------------"""
@@ -442,20 +445,19 @@ let
   @info @sprintf """ ----------------------------------------------------"""
   @info @sprintf """ Rising Bubble                                       """
   @info @sprintf """   Resolution:                                       """
-  @info @sprintf """     (Δx, Δy)   = (%.2e, %.2e)                       """ Δx Δy
-  @info @sprintf """     (Nex, Ney) = (%d, %d)                           """ Nex Ney
+  @info @sprintf """     (Δx, Δy, Δz)   = (%.2e, %.2e, %.2e)             """ Δx Δy Δz 
+  @info @sprintf """     (Nex, Ney, Nez) = (%d, %d, %d)                  """ Nex Ney Nez
   @info @sprintf """     dt         = %.2e                               """ dt
   @info @sprintf """ ----------------------------------------------------"""
 
-  timeend = 10
+  timeend = 100
   polynomialorder = Npoly
   DFloat = Float64
   expected_engf_eng0 = Dict()
   expected_engf_eng0[Float64] = 1.4389690552059924e+00
 
-  engf_eng0 = run(mpicomm, numdims, numelem, polynomialorder, timeend,
-                  DFloat, dt, output_steps)
-
-  @test engf_eng0 ≈ expected_engf_eng0[DFloat]
+  etime = @elapsed run(mpicomm, numdims, numelem, polynomialorder, timeend,
+                       DFloat, dt, output_steps)
+  @info @sprintf("""run time = %.16f""", etime)
 end
 nothing

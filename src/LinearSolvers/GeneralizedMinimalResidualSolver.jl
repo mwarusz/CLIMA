@@ -39,20 +39,25 @@ This uses the restarted Generalized Minimal Residual method of Saad and Schultz 
 """
 struct GeneralizedMinimalResidual{M, MP1, MMP1, T, AT} <: LS.AbstractIterativeLinearSolver
   krylov_basis::NTuple{MP1, AT}
-  H::MArray{Tuple{MP1, M}, T, 2, MMP1}
-  g0::MArray{Tuple{MP1, 1}, T, 2, MP1}
+  #H::MArray{Tuple{MP1, M}, T, 2, MMP1}
+  #g0::MArray{Tuple{MP1, 1}, T, 2, MP1}
+  H::Array{T, 2}
+  g0::Array{T, 1}
   tolerance::MArray{Tuple{1}, T, 1, 1}
 
   function GeneralizedMinimalResidual(M, Q::AT, tolerance) where AT
+    T = eltype(Q)
     krylov_basis = ntuple(i -> similar(Q), M + 1)
-    H = @MArray zeros(M + 1, M)
-    g0 = @MArray zeros(M + 1)
+    #H = @MArray zeros(M + 1, M)
+    #g0 = @MArray zeros(M + 1)
+    H = zeros(T, M + 1, M)
+    g0 = zeros(T, M + 1)
 
     new{M, M + 1, M * (M + 1), eltype(Q), AT}(krylov_basis, H, g0, (tolerance,))
   end
 end
 
-const weighted = true
+const weighted = false
 
 function LS.initialize!(linearoperator!, Q, Qrhs, solver::GeneralizedMinimalResidual)
     g0 = solver.g0
@@ -126,6 +131,10 @@ function LS.doiteration!(linearoperator!, Q, Qrhs,
     expr_Q = @~ @. expr_Q + y[i] * krylov_basis[i]
   end
   Q .= expr_Q
+  
+  #for i = 1:j
+  #  @. Q += y[i] * krylov_basis[i]
+  #end
 
   # if not converged restart
   converged || LS.initialize!(linearoperator!, Q, Qrhs, solver)

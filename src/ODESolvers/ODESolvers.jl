@@ -64,10 +64,16 @@ function solve!(Q, solver::AbstractODESolver; timeend::Real=Inf,
 
   step = 0
   time = t0
+
+  total_duration = 0.0
   while time < timeend
     step += 1
 
-    time = dostep!(Q, solver, timeend, adjustfinalstep)
+    duration = @elapsed begin
+      time = dostep!(Q, solver, timeend, adjustfinalstep)
+    end
+
+    total_duration += step > 2 ? duration : 0.0
 
     # FIXME: Determine better way to handle postcallback behavior
     # Current behavior:
@@ -92,9 +98,11 @@ function solve!(Q, solver::AbstractODESolver; timeend::Real=Inf,
 
     # Figure out if we should stop
     if numberofsteps == step
+      @info "total_duration = $total_duration"
       return gettime(solver)
     end
   end
+  @info "In loop time = $total_duration"
   gettime(solver)
 end
 # }}}
